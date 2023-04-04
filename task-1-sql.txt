@@ -1,0 +1,171 @@
+
+-- DROP TABLES
+DROP TABLE IF EXISTS customer;
+DROP TABLE IF EXISTS product;
+DROP TABLE IF EXISTS store;
+DROP TABLE IF EXISTS stock;
+DROP TABLE IF EXISTS purchase;
+DROP TABLE IF EXISTS delivery;
+
+-- CREATE TABLES
+CREATE TABLE customer ( 
+    customer_id SERIAL PRIMARY KEY, 
+    name VARCHAR(50) NOT NULL, 
+    address VARCHAR(80) NOT NULL, 
+    phone VARCHAR(20) NOT NULL, 
+    dob DATE NOT NULL, 
+    bank_name VARCHAR(50) NOT NULL, 
+    bank_address VARCHAR(80) NOT NULL, 
+    sort_code VARCHAR(20) NOT NULL, 
+    account_number VARCHAR(20) NOT NULL 
+);
+
+CREATE TABLE product ( 
+    product_id SERIAL PRIMARY KEY, 
+    product_type VARCHAR(50) NOT NULL, 
+    name VARCHAR(50) NOT NULL, 
+    description VARCHAR(255) NOT NULL, 
+    cost FLOAT NOT NULL 
+);
+
+CREATE TABLE store ( 
+    store_id SERIAL PRIMARY KEY, 
+    name VARCHAR(50) NOT NULL, 
+    address VARCHAR(80) NOT NULL 
+);
+
+CREATE TABLE stock ( 
+    product_id INTEGER REFERENCES product (product_id) NOT NULL, 
+    store_id INTEGER REFERENCES store (store_id) NOT NULL, 
+    quantity INTEGER NOT NULL, 
+    PRIMARY KEY (product_id, store_id) 
+);
+
+CREATE TABLE purchase ( 
+    purchase_id SERIAL PRIMARY KEY, 
+    customer_id INTEGER REFERENCES customer (customer_id) NOT NULL, 
+    product_id INTEGER REFERENCES product (product_id) NOT NULL, 
+    store_id INTEGER REFERENCES store (store_id) NOT NULL 
+);
+
+CREATE TABLE delivery ( 
+    delivery_id SERIAL PRIMARY KEY, 
+    purchase_id INTEGER REFERENCES purchase (purchase_id) NOT NULL, 
+    delivery_date DATE NOT NULL, 
+    delivery_time TIME NOT NULL 
+);
+
+-- INSERT DATA
+INSERT INTO customer (name, address, phone, dob, bank_name, bank_address, sort_code, account_number) 
+VALUES ('John Smith', '123 Main Street', '1234567890', '1990-01-01', 'Bank of America', '456 Bank Street', '123456', '1234567890'), 
+('Jane Doe', '456 Main Street', '0987654321', '1991-02-02', 'Chase Bank', '789 Chase Street', '234567', '0987654321');
+
+INSERT INTO product (product_type, name, description, cost) 
+VALUES ('Instrument', 'Guitar', 'Acoustic 6-String', 400.00), 
+('Instrument', 'Drum Set', '5 Piece', 600.00), 
+('Media', 'CD', 'Greatest Hits', 10.00), 
+('Media', 'Book', 'Guitar Basics', 15.00);
+
+INSERT INTO store (name, address) 
+VALUES ('Store1', '123 Store Street'), 
+('Store2', '456 Store Street');
+
+INSERT INTO stock (product_id, store_id, quantity) 
+VALUES (1, 1, 10), 
+(2, 1, 5), 
+(3, 1, 20), 
+(4, 1, 25), 
+(1, 2, 15), 
+(2, 2, 10), 
+(3, 2, 25), 
+(4, 2, 30);
+
+INSERT INTO purchase (customer_id, product_id, store_id) 
+VALUES (1, 1, 1), 
+(2, 2, 2);
+
+INSERT INTO delivery (purchase_id, delivery_date, delivery_time) 
+VALUES (1, '2021-02-01', '11:00'), 
+(2, '2021-02-02', '13:00');
+
+-- CREATE PROCEDURES
+CREATE FUNCTION check_stock(product_id INTEGER, store_id INTEGER, quantity INTEGER) 
+RETURNS BOOLEAN AS $$ 
+DECLARE 
+    stock_quantity INTEGER; 
+BEGIN 
+    SELECT quantity INTO stock_quantity FROM stock 
+    WHERE product_id = product_id 
+    AND store_id = store_id; 
+    IF stock_quantity >= quantity THEN 
+        RETURN TRUE; 
+    ELSE 
+        RETURN FALSE; 
+    END IF; 
+END; 
+$$ LANGUAGE plpgsql;
+
+CREATE FUNCTION validate_date(date_field DATE) 
+RETURNS BOOLEAN AS $$ 
+DECLARE 
+    today DATE; 
+BEGIN 
+    SELECT CURRENT_DATE INTO today; 
+    IF date_field >= today THEN 
+        RETURN TRUE; 
+    ELSE 
+        RETURN FALSE; 
+    END IF; 
+END; 
+$$ LANGUAGE plpgsql;
+
+CREATE FUNCTION check_customer(name VARCHAR(50), address VARCHAR(80))
+RETURNS BOOLEAN AS $$
+DECLARE 
+    customer_name VARCHAR(50); 
+    customer_address VARCHAR(80);
+BEGIN 
+    SELECT name, address INTO customer_name, customer_address FROM customer 
+    WHERE name = name 
+    AND address = address; 
+    IF customer_name IS NOT NULL AND customer_address IS NOT NULL THEN 
+        RETURN FALSE; 
+    ELSE 
+        RETURN TRUE; 
+    END IF; 
+END; 
+$$ LANGUAGE plpgsql;
+
+CREATE PROCEDURE register_customer(name VARCHAR(50), address VARCHAR(80), phone VARCHAR(20), dob DATE, bank_name VARCHAR(50), bank_address VARCHAR(80), sort_code VARCHAR(20), account_number VARCHAR(20)) 
+AS $$ 
+BEGIN 
+    IF check_customer(name, address) THEN 
+        INSERT INTO customer (name, address, phone, dob, bank_name, bank_address, sort_code, account_number) 
+        VALUES (name, address, phone, dob, bank_name, bank_address, sort_code, account_number); 
+    ELSE 
+        RAISE EXCEPTION 'Customer already registered.'; 
+    END IF; 
+END; 
+$$ LANGUAGE plpgsql;
+
+CREATE PROCEDURE purchase_product(customer_id INTEGER, product_id INTEGER, store_id INTEGER, delivery_date DATE, delivery_time TIME) 
+AS $$ 
+BEGIN 
+    IF check_stock(product_id, store_id, 1) THEN 
+        IF validate_date(delivery_date) THEN 
+            INSERT INTO purchase (customer_id, product_id, store_id) 
+            VALUES (customer_id, product_id, store_id); 
+            INSERT INTO delivery (purchase_id, delivery_date, delivery_time) 
+            VALUES (LAST_INSERT_ID(), delivery_date, delivery_time); 
+        ELSE 
+            RAISE EXCEPTION 'Invalid delivery date.'; 
+        END IF; 
+    ELSE 
+        RAISE EXCEPTION 'Insufficient stock.'; 
+    END IF; 
+END; 
+$$ LANGUAGE plpgsql;
+
+-- CALL PROCEDURES
+CALL register_customer('John Doe', '123 Main Street', '1234567890', '1992-03-03', 'Bank of America', '456 Bank Street', '123456', '1234567890');
+CALL purchase_product(3, 1, 1, '2021-03-03', '12:00');
